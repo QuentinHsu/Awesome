@@ -1,0 +1,117 @@
+log:
+  level: debug
+  file: ./log.txt
+
+data_providers:
+  - tag: geosite
+    file: ./geosite.dat
+    auto_reload: false
+
+  - tag: geoip
+    file: ./geoip.dat
+    auto_reload: false
+
+  - tag: hosts
+    file: ./hosts.txt
+
+plugins:
+  - tag: cn
+    type: fast_forward
+    args:
+      upstream:
+        - addr: https://223.5.5.5/dns-query
+          idle_timeout: 86400
+        - addr: https://120.53.53.53/dns-query
+          idle_timeout: 86400
+          trusted: true
+  - tag: ecs_cn
+    type: ecs
+    args:
+      auto:
+        false # 是否自动将用户请求的来源地址作为 ECS 附加到请求。
+        # 如果为 true，则预设地址不会被使用。
+        # 仅适用于公网的服务器。本地运行不要启用这个功能。
+      ipv4: 1.2.3.4 # 预设的 IPv4 地址。会优先附加在 A 请求里。填写你所在地区的 IP，随机一个。
+      # ipv6: "2001:dd8:1a::"   # 预设的 IPv6 地址。会优先附加在 AAAA 请求里。
+      force_overwrite: false # 如果请求已有 ECS，是否强制覆盖。
+      mask4: 24 # 用于 ipv4 地址的掩码。默认：24。
+      # mask6: 48               # 用于 ipv6 地址的掩码。默认：48。
+
+  - tag: global
+    type: fast_forward
+    args:
+      upstream:
+        - addr: https://8.8.4.4/dns-query
+          idle_timeout: 86400
+          socks5: 127.0.0.1:7890
+        - addr: https://1.0.0.1/dns-query
+          idle_timeout: 86400
+          socks5: 127.0.0.1:7890
+
+  - tag: cache
+    type: cache
+    args:
+      size: 65536
+      lazy_cache_ttl: 86400
+      lazy_cache_reply_ttl: 15
+      cache_everything: true
+
+  - tag: ttl
+    type: ttl
+    args:
+      minimal_ttl: 600
+      maximum_ttl: 3600
+
+  - tag: hosts
+    type: hosts
+    args:
+      hosts:
+        - 'provider:hosts'
+
+  - tag: direct_domain
+    type: query_matcher
+    args:
+      domain:
+        - provider:geosite:cn
+
+  - tag: direct_ip
+    type: response_matcher
+    args:
+      ip:
+        - provider:geoip:cn
+
+  - tag: entrance
+    type: sequence
+    args:
+      exec:
+        - hosts
+        - _misc_optm
+        - _prefer_ipv4
+        - cache
+        - _pad_query
+        - if: direct_domain
+          exec:
+            - cn
+            - _return
+          else_exec:
+            - primary:
+                - ecs_cn
+                - global
+                - if: (direct_ip)
+                  exec:
+                    - cn
+                    - _return
+                  else_exec:
+                    - _return
+              secondary:
+                - cn
+                - _return
+              stat_length: 10
+              threshold: 5
+        - ttl
+
+servers:
+  - exec: entrance
+    listeners:
+      - protocol: udp
+        addr: 0.0.0.0:53
