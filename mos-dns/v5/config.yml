@@ -1,0 +1,137 @@
+### mos-dns v5 config ###
+log:
+  level: info
+  file: ./log.txt
+
+plugins:
+  # 缓存
+  - tag: cache
+    type: cache
+    args:
+      size: 10240
+      lazy_cache_ttl: 86400
+
+  # 重定向域名
+  - tag: redirect
+    type: redirect
+    args:
+      rules:
+        - www.cnbeta.com www.cnbeta.com.cdn.cloudflare.net
+
+  # 转发至国内 DNS，并发查询
+  - tag: forward_local
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: udp://119.29.29.29
+        - addr: udp://223.5.5.5
+
+  # 转发至国外 DNS，并发查询
+  - tag: forward_remote
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: tcp://8.8.8.8
+        - addr: tcp://1.1.1.1
+
+  # 自定义 hosts
+  - tag: hosts
+    type: hosts
+    args:
+      files:
+        - '/etc/mosdns/hosts'
+
+  # china ip 和自己的 vps ip
+  - tag: local_ip
+    type: ip_set
+    args:
+      files:
+        - /etc/mosdns/china-ip.txt
+        # - /etc/mosdns/myvpsip.txt
+
+  # fallback 的 primary 服务器，返回非国内 ip 则 drop_resp
+  - tag: local_sequence
+    type: sequence
+    args:
+      - exec: $forward_local
+      - matches: '!resp_ip $local_ip'
+        exec: accept
+      - exec: drop_resp
+
+  # fallback 的 secondary 服务器，返回非国内 ip 则添加至 ipset，返回国内 ip 只接受不会添加 ipset
+  - tag: remote_sequence
+    type: sequence
+    args:
+      - exec: $forward_remote
+      - matches: '!resp_ip $local_ip'
+        exec: ipset gfwlist,inet,24
+      - exec: accept
+
+  # fallback sequence
+  - tag: fallback
+    type: fallback
+    args:
+      primary: local_sequence
+      secondary: remote_sequence
+      threshold: 500
+      always_standby: true
+
+  # gfwlist 解析出的 ip 添加至 ipset，添加前先判断是否为国内 ip 或内网 ip
+  - tag: gfw-list
+    type: sequence
+    args:
+      - exec: ttl 300-3600
+      - matches: '!resp_ip $local_ip'
+        exec: ipset gfwlist,inet,24
+      - exec: accept
+
+  # 主运行序列
+  - tag: main_sequence
+    type: sequence
+    args:
+      - exec: $hosts
+      - matches: has_resp
+        exec: accept
+
+      - matches: qtype 65
+        exec: reject 3
+
+      - matches: qname &/etc/mosdns/reject-list.txt
+        exec: reject
+
+      - exec: prefer_ipv4
+
+      - exec: $redirect
+
+      # 动态域名跳过缓存
+      - matches: '!qname 00006801.com'
+        exec: $cache
+      - matches: has_resp
+        exec: accept
+
+      - matches: qname &/etc/mosdns/direct-list.txt &/etc/mosdns/apple-cn.txt
+        exec: $forward_local
+      - matches: has_resp
+        exec: accept
+
+      - matches: qname &/etc/mosdns/proxy-list.txt
+        exec: $forward_remote
+      - matches: has_resp
+        exec: goto gfw-list
+
+      - exec: $fallback
+
+  # 启动监听服务
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: :53
+
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: :53
