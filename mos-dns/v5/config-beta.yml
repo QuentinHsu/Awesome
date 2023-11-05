@@ -1,6 +1,6 @@
 ### mos-dns v5 config beta ###
 ### mos-dns version:  5.3.0
-###   config update:  2023-11-05T19:34:44+08:00
+###   config update:  2023-11-05T23:25:22+08:00
 
 log:
   level: info
@@ -47,11 +47,13 @@ plugins:
   - tag: forward_local
     type: forward
     args:
-      concurrent: 2
+      concurrent: 3
       upstreams:
-        - tag: ali_quic
+        - tag: moe_dns_quic
+          addr: quic://pdns.itxe.net:853
+        - tag: ali_dns_quic
           addr: quic://223.6.6.6:853
-        - tag: tencent_doh
+        - tag: tencent_dns_doh
           addr: https://120.53.53.53/dns-query
 
   # 转发至代理 DNS 服务器
