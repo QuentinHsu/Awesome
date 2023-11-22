@@ -1,0 +1,77 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "dev_tool",
+  "title": "dev tool",
+  "description": "Personal preference for development tools.",
+  "author": "XuQuentinYang",
+  "license": "MIT",
+  "icon": "command-icon.png",
+  "commands": [
+    {
+      "name": "time",
+      "title": "Time",
+      "icon": "time.png",
+      "description": "dev time format",
+      "mode": "view",
+      "preferences": [
+        {
+          "name": "defaultPrefix",
+          "type": "textfield",
+          "required": false,
+          "title": "Default Prefix",
+          "label": "Selected Content",
+          "description": "Default prefix content",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "name": "id-card",
+      "title": "Id Card",
+      "icon": "id-card.png",
+      "description": "random Id Card",
+      "mode": "view",
+      "preferences": [
+        {
+          "name": "defaultPrefix",
+          "type": "textfield",
+          "required": false,
+          "title": "Default Prefix",
+          "label": "Selected Content",
+          "description": "Default prefix content",
+          "default": ""
+        }
+      ]
+    }
+  ],
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "publish": "npx @raycast/api@latest publish"
+  },
+  "dependencies": {
+    "@raycast/api": "^1.54.1",
+    "dayjs": "^1.11.8"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config-react": "^0.41.0",
+    "@raycast/eslint-config": "1.0.5",
+    "@sj-distributor/eslint-plugin-react": "^0.7.1",
+    "@types/node": "18.8.3",
+    "@types/react": "18.0.9",
+    "@typescript-eslint/eslint-plugin": "^6.5.0",
+    "@typescript-eslint/parser": "^6.5.0",
+    "eslint": "^8.48.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-import": "^2.28.1",
+    "eslint-plugin-prettier": "^5.0.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-simple-import-sort": "^10.0.0",
+    "eslint-plugin-unicorn": "^48.0.1",
+    "prettier": "^3.0.3",
+    "typescript": "^5.2.2"
+  }
+}
