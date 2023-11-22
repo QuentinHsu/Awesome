@@ -1,0 +1,133 @@
+### mos-dns v5 config beta ###
+### mos-dns version:  5.3.0
+###   config update:  2023-11-05T23:25:22+08:00
+
+log:
+  level: info
+  file: ./log.txt
+
+# (实验性) API 入口设置
+api:
+  http: ":8080" # 在该地址启动 api 接口。
+
+plugins:
+  # Data
+  - tag: data-ip-cidr-cn
+    type: "ip_set"
+    args:
+      files:
+        - /etc/mosdns/ip-cidr-cn.txt
+
+  - tag: data-direct-list
+    type: "domain_set"
+    args:
+      files:
+        - /etc/mosdns/direct-list.txt
+
+  - tag: data-reject-list
+    type: "domain_set"
+    args:
+      files:
+        - /etc/mosdns/reject-list.txt
+
+  # 缓存
+  - tag: cache
+    type: cache
+    args:
+      size: 1024
+      lazy_cache_ttl: 86400
+      # (实验性) 将缓存保存在磁盘。插件启动时也会自动从该文件载入缓存。
+      # 缓存将在 mosdns 被关闭时保存。
+      dump_file: ./cache.dump
+      # (实验性) 自动保存间隔。单位秒。默认 600。
+      # 如果距离上次 dump 有 1024 次更新，则自动保存。
+      dump_interval: 600
+
+  # 转发至直连 DNS 服务器
+  - tag: forward_local
+    type: forward
+    args:
+      concurrent: 3
+      upstreams:
+        - tag: moe_dns_quic
+          addr: quic://pdns.itxe.net:853
+        - tag: ali_dns_quic
+          addr: quic://223.6.6.6:853
+        - tag: tencent_dns_doh
+          addr: https://120.53.53.53/dns-query
+
+  # 转发至代理 DNS 服务器
+  - tag: forward_remote
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - tag: google_doh
+          addr: https://dns.google/dns-query
+          dial_addr: "8.8.8.8"
+          bootstrap_version: 4
+          socks5: 192.168.100.1:7890
+          idle_timeout: 30
+          enable_pipeline: false
+          enable_http3: false
+          insecure_skip_verify: false
+          so_mark: 0
+          bind_to_device: ""
+        - addr: tcp://8.8.8.8
+          enable_pipeline: true
+
+  # fallback 用本地服务器 sequence
+  # 返回不包含本地 ip 则 reject
+  - tag: local_ip_sequence
+    type: sequence
+    args:
+      - exec: $forward_local
+      - matches: resp_ip $data-ip-cidr-cn
+        exec: accept
+      - exec: drop_resp
+
+  # fallback 用远程服务器 sequence
+  - tag: remote_sequence
+    type: sequence
+    args:
+      - exec: $forward_remote
+      - exec: accept
+
+  # fallback 用远程服务器 sequence
+  - tag: "fallback"
+    type: "fallback"
+    args:
+      primary: local_ip_sequence
+      secondary: remote_sequence
+      threshold: 500
+      always_standby: true
+
+  # 主要的运行逻辑插件
+  # sequence 插件中调用的插件 tag 必须在 sequence 前定义，
+  # 否则 sequence 找不到对应插件。
+  - tag: main_sequence
+    type: sequence
+    args:
+      - matches: qname $data-reject-list
+        exec: reject
+      - exec: $cache
+      - matches: has_resp
+        exec: accept
+      - matches: qname $data-direct-list
+        exec: $forward_local
+      - matches: has_resp
+        exec: accept
+      - exec: $fallback
+
+  # 启动 udp 服务器。
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: :53
+
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: :53
